@@ -13,17 +13,14 @@ A re-implementation of the fantastic idea in [[https://github.com/zachcurry/emac
 
 [[https://user-images.githubusercontent.com/20903656/107152385-814f2c00-69a2-11eb-978f-b3e78067b3f3.gif]]
 
-* Installation
+* About
 
-Just install from [[https://melpa.org/][MELPA]], and you're ready to go.
+This is a test version for Sway/Wayland only. Mostly is taken from https://github.com/tecosaur/emacs-everywhere
 
-** Doom
-
-Available with the =:app everywhere= module (and with a nice modeline).
 
 ** Dependencies
 
-On Linux, ensure you have the following dependencies satisfied: =xclip=, =xdotool=, =xprop=, and =xwininfo=.
+On Linux, ensure you have the following dependencies satisfied: =wtype=, =jq=, =wl-copy=.
 
 * Usage
 
@@ -57,14 +54,4 @@ Just call =emacs --daemon= and you're sorted!
 
 Emacs-everywhere needs a way to launch when a not-emacs application has focus. The easiest way to do this is to have a global keybinding/keyboard shortcut dedicated to launching (same as above): ~emacsclient --eval "(emacs-everywhere)"~
 
-On linux/bsd, use your desktop environment, windows manager, or a dedicated processes (like sxhkd, xbindkeys). The [[https://help.ubuntu.com/stable/ubuntu-help/keyboard-shortcuts-set.html.en][ubuntu]] and [[https://wiki.archlinux.org/title/Keyboard_shortcuts#Customization][archlinux]] guides are informative.
-
-On MacOS, options include [[http://www.hammerspoon.org/][hammerspoon]], [[https://www.alfredapp.com/help/workflows/triggers/hotkey/][alfred]], [[https://apps.apple.com/us/app/thor-launcher/id1120999687?mt=12][thor]], or [[https://github.com/pqrs-org/Karabiner-Elements/issues/134#issuecomment-439658876][karabiner]]. (Untested, see [[https://github.com/tecosaur/emacs-everywhere/issues/1#issuecomment-781329521][the relevant issue]])
-
-** Example
-
- For xbindkeys, =~/.xbindkeysrc= would include the entry
- #+begin_src shell
- "emacsclient --eval '(emacs-everywhere)'"
-   Alt + Mod4 + e
- #+end_src
+Add do Sway config: bindsym Print exec emacsclient --eval "(emacs-everywhere)"
