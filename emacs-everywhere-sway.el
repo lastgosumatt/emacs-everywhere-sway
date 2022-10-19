@@ -33,34 +33,19 @@
   'emacs-everywhere-paste-p 'emacs-everywhere-paste-command "0.1.0")
 
 (defvar emacs-everywhere--display-server
-  (cond
-   ((eq system-type 'darwin) 'quartz)
-   ((memq system-type '(ms-dos windows-nt cygwin)) 'windows)
-   ((eq system-type 'gnu/linux)
-    (if (getenv "WAYLAND_DISPLAY") 'wayland 'x11))
-   (t 'unknown))
+  'wayland
   "The detected display server.")
 
 (defcustom emacs-everywhere-paste-command
-  (pcase emacs-everywhere--display-server
-    ('quartz (list "osascript" "-e" "tell application \"System Events\" to keystroke \"v\" using command down"))
-    ('x11 (list "xdotool" "key" "--clearmodifiers" "Shift+Insert"))
-    ((or 'wayland 'unknown)
-     (list "notify-send"
-           "No paste command defined for emacs-everywhere"
-           "-a" "Emacs" "-i" "emacs")))
+  (list "wtype" "-M" "ctrl" "v" "-m" "ctrl")
   "Command to trigger a system paste from the clipboard.
 This is given as a list in the form (CMD ARGS...).
 
 To not run any command, set to nil."
   :type '(set (repeat string) (const nil))
   :group 'emacs-everywhere)
-
 (defcustom emacs-everywhere-copy-command
-  (pcase emacs-everywhere--display-server
-    ('x11 (list "xclip" "-selection" "clipboard" "%f"))
-    ((and 'wayland (guard (executable-find "wl-copy")))
-     (list "sh" "-c" "wl-copy < %f")))
+  (list "sh" "-c" "wl-copy < %f")
   "Command to write to the system clipboard from a file (%f).
 This is given as a list in the form (CMD ARGS...).
 In the arguments, \"%f\" is treated as a placeholder for the path
@@ -75,9 +60,7 @@ it worked can be a good idea."
   :group 'emacs-everywhere)
 
 (defcustom emacs-everywhere-window-focus-command
-  (pcase emacs-everywhere--display-server
-    ('quartz (list "osascript" "-e" "tell application \"%w\" to activate"))
-    ('x11 (list "xdotool" "windowactivate" "--sync" "%w")))
+  (list "swaymsg" "[pid=\"%w\"]" "focus")
   "Command to refocus the active window when emacs-everywhere was triggered.
 This is given as a list in the form (CMD ARGS...).
 In the arguments, \"%w\" is treated as a placeholder for the window ID,
@@ -241,14 +224,14 @@ This matches FILE against `emacs-everywhere-file-patterns'."
   "Entry point for the executable.
 APP is an `emacs-everywhere-app' struct."
   (let ((file (buffer-file-name (buffer-base-buffer))))
-   (when (and file (emacs-everywhere-file-p file))
-    (let ((app (or (frame-parameter nil 'emacs-everywhere-app)
-                   (emacs-everywhere-app-info))))
-      (setq-local emacs-everywhere-current-app app)
-      (with-demoted-errors "Emacs Everywhere: error running init hooks, %s"
-        (run-hooks 'emacs-everywhere-init-hooks))
-      (emacs-everywhere-mode 1)
-      (setq emacs-everywhere--contents (buffer-string))))))
+    (when (and file (emacs-everywhere-file-p file))
+      (let ((app (or (frame-parameter nil 'emacs-everywhere-app)
+                     (emacs-everywhere-app-info))))
+        (setq-local emacs-everywhere-current-app app)
+        (with-demoted-errors "Emacs Everywhere: error running init hooks, %s"
+          (run-hooks 'emacs-everywhere-init-hooks))
+        (emacs-everywhere-mode 1)
+        (setq emacs-everywhere--contents (buffer-string))))))
 
 ;;;###autoload
 (add-hook 'server-visit-hook #'emacs-everywhere-initialise)
@@ -351,9 +334,7 @@ Never paste content when ABORT is non-nil."
 
 (defun emacs-everywhere-app-info ()
   "Return information on the active window."
-  (let ((w (pcase system-type
-             (`darwin (emacs-everywhere-app-info-osx))
-             (_ (emacs-everywhere-app-info-linux)))))
+  (let ((w (emacs-everywhere-app-info-linux)))
     (setf (emacs-everywhere-app-title w)
           (replace-regexp-in-string
            (format " ?-[A-Za-z0-9 ]*%s"
@@ -363,114 +344,26 @@ Never paste content when ABORT is non-nil."
             "[^[:ascii:]]+" "-" (emacs-everywhere-app-title w))))
     w))
 
-(defun emacs-everywhere-call (command &rest args)
-  "Execute COMMAND with ARGS synchronously."
-  (with-temp-buffer
-    (apply #'call-process command nil t nil (remq nil args))
-    (when (and (eq system-type 'darwin)
-               (string-match-p emacs-everywhere-osascript-accessibility-error-message (buffer-string)))
-      (call-process "osascript" nil nil nil
-                        "-e" (format "display alert \"emacs-everywhere\" message \"Emacs has not been granted accessibility permissions, cannot run emacs-everywhere!
-Please go to 'System Preferences > Security & Privacy > Privacy > Accessibility' and allow Emacs.\"" ))
-      (error "MacOS accessibility error, aborting."))
-    (string-trim (buffer-string))))
-
 (defun emacs-everywhere-app-info-linux ()
   "Return information on the active window, on linux."
-  (let ((window-id (emacs-everywhere-call "xdotool" "getactivewindow")))
+  (let ((window-id
+         (string-to-number (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true)' | jq .\"pid\""))))
     (let ((app-name
-           (car (split-string-and-unquote
-                 (string-trim-left
-                  (emacs-everywhere-call "xprop" "-id" window-id "WM_CLASS")
-                  "[^ ]+ = \"[^\"]+\", "))))
+           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true)' | jq .\"app_id\""))))
           (window-title
-           (car (split-string-and-unquote
-                 (string-trim-left
-                  (emacs-everywhere-call "xprop" "-id" window-id "_NET_WM_NAME")
-                  "[^ ]+ = "))))
-          (window-geometry
-           (let ((info (mapcar (lambda (line)
-                                 (split-string line ":" nil "[ \t]+"))
-                               (split-string
-                                (emacs-everywhere-call "xwininfo" "-id" window-id) "\n"))))
-             (mapcar #'string-to-number
-                     (list (cadr (assoc "Absolute upper-left X" info))
-                           (cadr (assoc "Absolute upper-left Y" info))
-                           (cadr (assoc "Relative upper-left X" info))
-                           (cadr (assoc "Relative upper-left Y" info))
-                           (cadr (assoc "Width" info))
-                           (cadr (assoc "Height" info)))))))
+           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true)' | jq .\"name\"")))))
+
       (make-emacs-everywhere-app
-       :id (string-to-number window-id)
+       :id window-id
        :class app-name
        :title window-title
        :geometry (list
-                  (if (= (nth 0 window-geometry) (nth 2 window-geometry))
-                      (nth 0 window-geometry)
-                    (- (nth 0 window-geometry) (nth 2 window-geometry)))
-                  (if (= (nth 1 window-geometry) (nth 3 window-geometry))
-                      (nth 1 window-geometry)
-                    (- (nth 1 window-geometry) (nth 3 window-geometry)))
-                  (nth 4 window-geometry)
-                  (nth 5 window-geometry))))))
+                  0
+                  0
+                  600
+                  800)))))
 
 (defvar emacs-everywhere--dir (file-name-directory load-file-name))
-
-(defun emacs-everywhere-app-info-osx ()
-  "Return information on the active window, on osx."
-  (emacs-everywhere-ensure-oscascript-compiled)
-  (let ((default-directory emacs-everywhere--dir))
-    (let ((app-name (emacs-everywhere-call
-                     "osascript" "app-name"))
-          (window-title (emacs-everywhere-call
-                         "osascript" "window-title"))
-          (window-geometry (mapcar #'string-to-number
-                                   (split-string
-                                    (emacs-everywhere-call
-                                     "osascript" "window-geometry") ", "))))
-      (make-emacs-everywhere-app
-       :id app-name
-       :class app-name
-       :title window-title
-       :geometry window-geometry))))
-
-(defun emacs-everywhere-ensure-oscascript-compiled (&optional force)
-  "Ensure that compiled oscascript files are present.
-Will always compile when FORCE is non-nil."
-  (unless (and (file-exists-p "app-name")
-               (file-exists-p "window-geometry")
-               (file-exists-p "window-title")
-               (not force))
-    (let ((default-directory emacs-everywhere--dir)
-          (app-name
-           "tell application \"System Events\"
-    set frontAppName to name of first application process whose frontmost is true
-end tell
-return frontAppName")
-          (window-geometry
-           "tell application \"System Events\"
-     set frontWindow to front window of (first application process whose frontmost is true)
-     set windowPosition to (get position of frontWindow)
-     set windowSize to (get size of frontWindow)
-end tell
-return windowPosition & windowSize")
-          (window-title
-           "set windowTitle to \"\"
-tell application \"System Events\"
-     set frontAppProcess to first application process whose frontmost is true
-end tell
-tell frontAppProcess
-    if count of windows > 0 then
-        set windowTitle to name of front window
-    end if
-end tell
-return windowTitle"))
-      (dolist (script `(("app-name" . ,app-name)
-                        ("window-geometry" . ,window-geometry)
-                        ("window-title" . ,window-title)))
-        (write-region (cdr script) nil (concat (car script) ".applescript"))
-        (shell-command (format "osacompile -r scpt:128 -t osas -o %s %s"
-                               (car script) (concat (car script) ".applescript")))))))
 
 ;;; Secondary functionality
 
