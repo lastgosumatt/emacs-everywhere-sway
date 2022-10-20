@@ -258,7 +258,6 @@ buffers.")
   ;; DEL/C-SPC to clear (first keystroke only)
   (when (keymapp emacs-everywhere-mode-initial-map)
     (set-transient-map emacs-everywhere-mode-initial-map)))
-
 (defun emacs-everywhere-apply-major-mode ()
   "Call `emacs-everywhere-major-mode-function'."
   (funcall emacs-everywhere-major-mode-function))
@@ -397,7 +396,9 @@ Never paste content when ABORT is non-nil."
                       "-e" "tell application \"System Events\" to keystroke \"c\" using command down")
         (sleep-for 0.01) ; lets clipboard info propagate
         (yank))
-    (when-let ((selection (gui-get-selection 'PRIMARY 'UTF8_STRING)))
+    (when-let ((selection (gui-select-text (mouse-yank-primary))
+                ;; (gui-get-selection 'PRIMARY 'UTF8_STRING)
+                ))
       (gui-backend-set-selection 'PRIMARY "")
       (insert selection)))
   (when (and (eq major-mode 'org-mode)
