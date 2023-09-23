@@ -60,7 +60,7 @@ it worked can be a good idea."
   :group 'emacs-everywhere)
 
 (defcustom emacs-everywhere-window-focus-command
-  (list "swaymsg" "[pid=\"%w\"]" "focus")
+  (list "swaymsg" "[con_id=\"%w\"]" "focus")
   "Command to refocus the active window when emacs-everywhere was triggered.
 This is given as a list in the form (CMD ARGS...).
 In the arguments, \"%w\" is treated as a placeholder for the window ID,
@@ -346,11 +346,11 @@ Never paste content when ABORT is non-nil."
 (defun emacs-everywhere-app-info-linux ()
   "Return information on the active window, on linux."
   (let ((window-id
-         (string-to-number (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true)' | jq .\"pid\""))))
+         (string-to-number (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true).id'"))))
     (let ((app-name
-           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true)' | jq .\"app_id\""))))
+           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true).app_id'"))))
           (window-title
-           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true)' | jq .\"name\"")))))
+           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true).name'")))))
 
       (make-emacs-everywhere-app
        :id window-id
