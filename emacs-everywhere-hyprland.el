@@ -60,7 +60,7 @@ it worked can be a good idea."
   :group 'emacs-everywhere)
 
 (defcustom emacs-everywhere-window-focus-command
-  (list "swaymsg" "[con_id=\"%w\"]" "focus")
+  (list "hyprctl" "dispatch" "focuswindow" "address:%w")
   "Command to refocus the active window when emacs-everywhere was triggered.
 This is given as a list in the form (CMD ARGS...).
 In the arguments, \"%w\" is treated as a placeholder for the window ID,
@@ -345,22 +345,19 @@ Never paste content when ABORT is non-nil."
 
 (defun emacs-everywhere-app-info-linux ()
   "Return information on the active window, on linux."
-  (let ((window-id
-         (string-to-number (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true).id'"))))
-    (let ((app-name
-           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true).app_id'"))))
-          (window-title
-           (car (split-string-and-unquote (shell-command-to-string "swaymsg -t get_tree | jq -r '..|try select(.focused == true).name'")))))
+  (pcase-let
+      ((`(,window-id ,window-class ,window-title _)
+        (split-string (shell-command-to-string "hyprctl activewindow -j | jq -r '.address, .class, .title'") "\n")))
 
-      (make-emacs-everywhere-app
-       :id window-id
-       :class app-name
-       :title window-title
-       :geometry (list
-                  0
-                  0
-                  600
-                  800)))))
+    (make-emacs-everywhere-app
+     :id window-id
+     :class window-class
+     :title window-title
+     :geometry (list
+                0
+                0
+                600
+                800))))
 
 (defvar emacs-everywhere--dir (file-name-directory load-file-name))
 
@@ -397,8 +394,8 @@ Never paste content when ABORT is non-nil."
         (sleep-for 0.01) ; lets clipboard info propagate
         (yank))
     (when-let ((selection (gui-select-text (mouse-yank-primary))
-                ;; (gui-get-selection 'PRIMARY 'UTF8_STRING)
-                ))
+                          ;; (gui-get-selection 'PRIMARY 'UTF8_STRING)
+                          ))
       (gui-backend-set-selection 'PRIMARY "")
       (insert selection)))
   (when (and (eq major-mode 'org-mode)
